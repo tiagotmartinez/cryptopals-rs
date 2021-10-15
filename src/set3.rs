@@ -9,6 +9,7 @@ use crate::english::*;
 use crate::pkcs7::*;
 use crate::aes::*;
 use crate::bits::*;
+use crate::mt::*;
 
 static mut GLOBAL_KEY: [u8; 16] = [0u8; 16];
 
@@ -261,4 +262,31 @@ pub fn challenge20() {
 
     assert_eq!(sts[0], "I'm rated \"R\"...this is a warning, ya better void / P");
     assert_eq!(sts[sts.len() - 1], "And we outta here / Yo, what happened to peace? / Pea");
+}
+
+//=============================================================================
+// CHALLENGE 21
+//=============================================================================
+
+// Implement the MT19937 Mersenne Twister RNG
+pub fn challenge21() {
+    let mut mt1 = Mt19937::with_seed(42);
+    let mut mt2 = Mt19937::with_seed(42);
+
+    assert_eq!(mt1.next(), mt2.next());
+    assert_eq!(mt1.next(), mt2.next());
+    assert_eq!(mt1.next(), mt2.next());
+    assert_eq!(mt1.next(), mt2.next());
+    assert_eq!(mt1.next(), mt2.next());
+    assert_eq!(mt1.next(), mt2.next());
+
+    let mut mt1 = Mt19937::with_seed(42);
+    let mut mt2 = Mt19937::with_seed(43);
+
+    assert_ne!(mt1.next(), mt2.next());
+    assert_ne!(mt1.next(), mt2.next());
+    assert_ne!(mt1.next(), mt2.next());
+    assert_ne!(mt1.next(), mt2.next());
+    assert_ne!(mt1.next(), mt2.next());
+    assert_ne!(mt1.next(), mt2.next());
 }
