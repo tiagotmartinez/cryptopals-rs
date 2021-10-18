@@ -290,3 +290,160 @@ pub fn challenge21() {
     assert_ne!(mt1.next(), mt2.next());
     assert_ne!(mt1.next(), mt2.next());
 }
+
+//=============================================================================
+// CHALLENGE 22
+//=============================================================================
+
+// Seconds since UNIX_EPOCH
+fn unix_time() -> u32 {
+    use std::time::SystemTime;
+    SystemTime::now().duration_since(SystemTime::UNIX_EPOCH).unwrap().as_secs() as u32
+}
+
+// Do some processing with timeouts and unix_time() as seed for random number generator
+fn random_value() -> (u32, u32) {
+    let mut rnd = rand::thread_rng();
+
+    // wait random number of seconds...
+    // changed back to smaller delays so we can run all tests
+    let wait_s = rand::distributions::Uniform::new(4, 11).sample(&mut rnd);
+    std::thread::sleep(std::time::Duration::from_secs(wait_s));
+
+    // seed the random number generator
+    let seed = unix_time();
+    let mut mt = Mt19937::with_seed(seed);
+
+    // wait more random number of seconds...
+    let wait_s = rand::distributions::Uniform::new(4, 11).sample(&mut rnd);
+    std::thread::sleep(std::time::Duration::from_secs(wait_s));
+
+    (seed, mt.next())
+}
+
+// Crack an MT19937 seed
+pub fn challenge22() {
+    let (seed, random) = random_value();
+
+    // lets try to guess going backwards...
+    let mut current_time = unix_time();
+    while current_time != 0 {
+        let mut mt = Mt19937::with_seed(current_time);
+        if mt.next() == random {
+            assert_eq!(current_time, seed);
+            return;
+        }
+        current_time -= 1;
+    }
+
+    panic!("failed")
+}
+
+//=============================================================================
+// CHALLENGE 23
+//=============================================================================
+
+// Reverse the "temper" operation of Mt19937
+// https://www.maths.tcd.ie/~fionn/misc/mt/
+fn untemper(value: u32) -> u32 {
+    let mut value = value;
+    value ^= value >> L;
+    value ^= (value << T) & C;
+    for _ in 0..7 {
+        value ^= (value << S) & B;
+    }
+    for _ in 0..3 {
+        value ^= value >> U;
+    }
+
+    value
+}
+
+// Clone an MT19937 RNG from its output
+pub fn challenge23() {
+    // collect 624 output samples
+    let mut mt = Mt19937::with_seed(unix_time());
+    let state : Vec<_> = (0..624).map(|_| mt.next()).map(|x| untemper(x)).collect();
+
+    // from reconstructed state, create a new MT instance and check
+    let mut mt2 = Mt19937::with_state(state);
+    for _ in 0..1248 {
+        assert_eq!(mt.next(), mt2.next());
+    }
+
+    // to make MT harder to clone, the "temper" operation should be one-way (NOT a bijection)
+    // and also never output enough state to be able to reconstruct (e.g. truncation)
+    // this, of course, oversimplifies the difficulty of *actually* making this in a secure
+    // and not workaround-able way... but this is the idea!
+}
+
+//=============================================================================
+// CHALLENGE 24
+//=============================================================================
+
+// "Encrypt" with MT by generating a random generated seeded by `key` and XOR'ing output with `input`
+fn encrypt_mt(key: u16, input: &[u8]) -> Vec<u8> {
+    let mut mt = Mt19937::with_seed(key as u32);
+    let keystream = (0..input.len()).map(|_| mt.next() as u8);
+    input.iter().zip(keystream).map(|(input, ks)| input ^ ks).collect()
+}
+
+// "Decryption" is, of course, exactly the same as encryption, but create separate function to make reading easier
+fn decrypt_mt(key: u16, input: &[u8]) -> Vec<u8> {
+    encrypt_mt(key, input)
+}
+
+fn is_mt_token(token: u32) -> bool {
+    // check tokens generated in the last hour
+    // (could be more...)
+    let mut current_time = unix_time();
+    let check_limit = current_time - 60 * 60;
+    while current_time != check_limit {
+        let value = Mt19937::with_seed(current_time).next();
+        if value == token {
+            return true;
+        }
+        current_time -= 1;
+    }
+    false
+}
+
+fn create_password_token() -> u32 {
+    Mt19937::with_seed(unix_time()).next()
+}
+
+// Create the MT19937 stream cipher and break it
+pub fn challenge24() {
+    for _ in 0..20 {
+        let key = random_usize(65536) as u16;
+        let length = random_usize(100) + 1;
+        let input = random_bytes(length);
+        let cipher = encrypt_mt(key, &input);
+        let plain = decrypt_mt(key, &cipher);
+        assert_eq!(input, plain);
+    }
+
+    let key = random_usize(65536) as u16;
+    let length = random_usize(100);
+    let input = [random_bytes(length), repeat(14, b'A')].concat();
+    let cipher = encrypt_mt(key, &input);
+
+    // decipher by guessing the key
+    let mut found = false;
+    for k in 0..=65535 {
+        let guess = decrypt_mt(k, &cipher);
+        if guess[guess.len() - 14 ..].iter().all(|&b| b == b'A') {
+            assert_eq!(k, key);
+            found = true;
+            break;
+        }
+    }
+
+    assert!(found);
+
+    let password_token = create_password_token();
+    let other_value = Mt19937::with_seed(5489).next();
+
+    assert!(is_mt_token(password_token));
+    assert!(!is_mt_token(other_value));
+}
