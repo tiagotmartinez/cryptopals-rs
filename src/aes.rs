@@ -95,3 +95,12 @@ pub fn aes_ctr(key: &[u8], nonce: u64, data: &[u8]) -> Vec<u8> {
     }
     ct
 }
+
+/// Write to `blk` the keystream for given `block` count with `nonce` using `cipher`
+/// (already configured with a key).
+pub fn aes_ctr_block(cipher: &Aes128, nonce: u64, block: u64, blk: &mut [u8]) {
+    assert!(blk.len() >= aes::BLOCK_SIZE);
+    u64_into_bytes_little_endian(nonce, &mut blk[..8]);
+    u64_into_bytes_little_endian(block, &mut blk[8..]);
+    cipher.encrypt_block(&mut Block::from_mut_slice(blk));
+}
