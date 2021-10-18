@@ -1,4 +1,4 @@
-// Cryptopals Set 2
+// Cryptopals Set 3
 
 #![allow(dead_code)]
 
