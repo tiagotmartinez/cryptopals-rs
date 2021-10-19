@@ -2,6 +2,8 @@
 
 #![allow(dead_code)]
 
+use std::time::{Instant, Duration};
+
 // use rand::RngCore;
 // use rand::distributions::{Distribution, Uniform};
 
@@ -267,7 +269,7 @@ pub fn challenge29() {
 // CHALLENGE 30
 //=============================================================================
 
-// Return the same padding that SHA-1 would append to a message of length `message_bytes`
+// Return the same padding that MD4 would append to a message of length `message_bytes`
 fn make_padding_md4(message_bytes: usize) -> Vec<u8> {
     let mut blk = vec![];
     blk.push(0x80);
@@ -289,7 +291,7 @@ fn md4_digest(data: &str) -> String {
     hex::encode(md4.finish())
 }
 
-// Compute the keyed SHA-1 MAC of `message` under `key`
+// Compute the keyed MD4 MAC of `message` under `key`
 fn md4_mac(key: &[u8], message: &[u8]) -> Vec<u8> {
     let mut md4 = Md4::new();
     md4.write(key);
@@ -297,7 +299,7 @@ fn md4_mac(key: &[u8], message: &[u8]) -> Vec<u8> {
     md4.finish()
 }
 
-// Check if the `sha1_mac` of `message` under `key` matches `mac`
+// Check if the `md4_mac` of `message` under `key` matches `mac`
 fn md4_check(key: &[u8], message: &[u8], mac: &[u8]) -> bool {
     &md4_mac(key, message) == mac
 }
@@ -345,4 +347,69 @@ pub fn challenge30() {
 
     // check that our fake_msg and fake_mac validate as if computed by sha1_mac
     assert!(md4_check(&key, &fake_msg, &fake_mac));
+}
+
+//=============================================================================
+// CHALLENGE 31
+//=============================================================================
+
+// Return `true` if `left` and `right` have same length and contents, but take
+// a while to compare each byte, making timing attacks easier.
+fn insecure_compare(left: &[u8], right: &[u8]) -> bool {
+    if left.len() != right.len() {
+        return false;
+    }
+
+    for i in 0..left.len() {
+        if left[i] != right[i] {
+            return false;
+        }
+        std::thread::sleep(Duration::from_millis(50));
+    }
+
+    true
+}
+
+// Verify if HMAC-SHA-1 of `message` under `key` matches `mac` using `insecure_compare`
+fn verify_insecure(key: &[u8], message: &[u8], mac: &[u8]) -> bool {
+    insecure_compare(&hmac_sha1(key, message), mac)
+}
+
+// Implement and break HMAC-SHA1 with an artificial timing leak
+pub fn challenge31() {
+    assert_eq!(hex::encode(hmac_sha1(b"key", b"The quick brown fox jumps over the lazy dog")), "de7c9b85b8b78aa6bc8a7a36f70a90701c9db4d9");
+    assert!(verify_insecure(b"key", b"The quick brown fox jumps over the lazy dog", &hex::decode("de7c9b85b8b78aa6bc8a7a36f70a90701c9db4d9").unwrap()));
+
+    let start = Instant::now();
+    assert!(!verify_insecure(b"key", b"message", b"12345678901234567890"));
+    let baseline = start.elapsed().as_millis() as u32;
+    println!("baseline = {}", baseline);
+
+    let key = random_bytes(16);
+    let message = random_bytes(32);
+    let secret_mac = hmac_sha1(&key, &message);
+    println!("{}", hex::encode(&secret_mac));
+
+    let mut last_digits = 0;
+    let mut guess_mac = vec![0u8; secret_mac.len()];
+    loop {
+        let start = Instant::now();
+        let check = verify_insecure(&key, &message, &guess_mac);
+        let elapsed_ms = (start.elapsed().as_millis() as u32).saturating_sub(baseline);
+        if check {
+            break
+        }
+
+        // the timeout makes it easy to guess how many digits are right
+        // take the shortcut in this test
+        let n_digits = elapsed_ms / 50;
+        if n_digits != last_digits {
+            println!("n_digits = {} {}", n_digits, hex::encode(&guess_mac[..n_digits as usize]));
+            last_digits = n_digits;
+        }
+        guess_mac[n_digits as usize] += 1;
+    }
+
+    println!("guess_mac = {}", hex::encode(&guess_mac));
+    assert_eq!(guess_mac, secret_mac);
 }

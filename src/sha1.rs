@@ -1,5 +1,7 @@
 use std::convert::TryInto;
 
+use crate::bits::*;
+
 /// A reference pure-Rust implementation of SHA-1, to be used as test bed.
 ///
 /// Not meant to be either fast or low-resource or whatever.  Just easy to hack.
@@ -120,4 +122,36 @@ impl Sha1 {
             self.h[4].to_be_bytes(),
         ].concat()
     }
+}
+
+// Compute HMAC-SHA1 of a message
+pub fn hmac_sha1(key: &[u8], message: &[u8]) -> Vec<u8> {
+    let key = {
+        // keys longer than blockSize are shortened by hashing them
+        let mut key = if key.len() > 64 {
+            let mut sha1 = Sha1::new();
+            sha1.write(key);
+            sha1.finish()
+        } else {
+            key.to_vec()
+        };
+
+        // keys shorter than blockSize are padded to blockSize by padding with zeros on the right
+        while key.len() < 64 {
+            key.push(0);
+        }
+
+        key
+    };
+
+    let okey = xor_byte(&key, 0x5c);
+    let ikey = xor_byte(&key, 0x36);
+
+    let mut inner = Sha1::new();
+    inner.write(&ikey);
+    inner.write(message);
+    let mut outer = Sha1::new();
+    outer.write(&okey);
+    outer.write(&inner.finish());
+    outer.finish()
 }
