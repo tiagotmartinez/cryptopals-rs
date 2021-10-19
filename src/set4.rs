@@ -10,6 +10,7 @@ use crate::pkcs7::*;
 use crate::aes::*;
 use crate::bits::*;
 use crate::sha1::*;
+use crate::md4::*;
 // use crate::mt::*;
 
 use aes::Aes128;
@@ -170,7 +171,7 @@ pub fn challenge27() {
 //=============================================================================
 
 // Return the hex-coded digest of an UTF-8 string `data`
-fn digest(data: &str) -> String {
+fn sha1_digest(data: &str) -> String {
     let mut sha1 = Sha1::new();
     sha1.write(data.as_bytes());
     hex::encode(sha1.finish())
@@ -202,7 +203,7 @@ pub fn challenge28() {
     ];
 
     for (s, h) in tests.iter() {
-        assert_eq!(&digest(s), h);
+        assert_eq!(&sha1_digest(s), h);
     }
 
     let key = random_bytes(16);
@@ -219,7 +220,7 @@ pub fn challenge28() {
 //=============================================================================
 
 // Return the same padding that SHA-1 would append to a message of length `message_bytes`
-fn make_padding(message_bytes: usize) -> Vec<u8> {
+fn make_padding_sha1(message_bytes: usize) -> Vec<u8> {
     let mut blk = vec![];
     blk.push(0x80);
     while (message_bytes + blk.len() + 8) % 64 != 0 {
@@ -227,15 +228,13 @@ fn make_padding(message_bytes: usize) -> Vec<u8> {
     }
 
     let message_bits = message_bytes as u64 * 8;
-    for i in (0..8).rev() {
-        blk.push((message_bits >> (8 * i)) as u8);
-    }
+    blk.extend_from_slice(&message_bits.to_be_bytes());
 
     blk
 }
 
 // Check if the `sha1_mac` of `message` under `key` matches `mac`
-fn check(key: &[u8], message: &[u8], mac: &[u8]) -> bool {
+fn sha1_check(key: &[u8], message: &[u8], mac: &[u8]) -> bool {
     &sha1_mac(key, message) == mac
 }
 
@@ -245,10 +244,10 @@ pub fn challenge29() {
     let key = random_bytes(16);
     let msg = b"comment1=cooking%20MCs;userdata=foo;comment2=%20like%20a%20pound%20of%20bacon";
     let mac = sha1_mac(&key, msg);
-    assert!(check(&key, msg, &mac));
+    assert!(sha1_check(&key, msg, &mac));
 
     // our final message will include the original message, the (previous) SHA-1 padding and the new payload
-    let pad = make_padding(msg.len() + 16);
+    let pad = make_padding_sha1(msg.len() + 16);
     let extra = b";admin=true";
     let mut fake_msg = msg.to_vec();
     fake_msg.extend_from_slice(&pad);
@@ -261,6 +260,89 @@ pub fn challenge29() {
     let fake_mac = sha1.finish();
 
     // check that our fake_msg and fake_mac validate as if computed by sha1_mac
-    assert!(check(&key, &fake_msg, &fake_mac));
+    assert!(sha1_check(&key, &fake_msg, &fake_mac));
 }
 
+//=============================================================================
+// CHALLENGE 30
+//=============================================================================
+
+// Return the same padding that SHA-1 would append to a message of length `message_bytes`
+fn make_padding_md4(message_bytes: usize) -> Vec<u8> {
+    let mut blk = vec![];
+    blk.push(0x80);
+    while (message_bytes + blk.len() + 8) % 64 != 0 {
+        blk.push(0);
+    }
+
+    let message_bits = message_bytes as u64 * 8;
+    blk.extend_from_slice(&message_bits.to_le_bytes());
+
+    blk
+}
+
+
+// Return the hex-coded digest of an UTF-8 string `data`
+fn md4_digest(data: &str) -> String {
+    let mut md4 = Md4::new();
+    md4.write(data.as_bytes());
+    hex::encode(md4.finish())
+}
+
+// Compute the keyed SHA-1 MAC of `message` under `key`
+fn md4_mac(key: &[u8], message: &[u8]) -> Vec<u8> {
+    let mut md4 = Md4::new();
+    md4.write(key);
+    md4.write(message);
+    md4.finish()
+}
+
+// Check if the `sha1_mac` of `message` under `key` matches `mac`
+fn md4_check(key: &[u8], message: &[u8], mac: &[u8]) -> bool {
+    &md4_mac(key, message) == mac
+}
+
+// Break an MD4 keyed MAC using length extension
+pub fn challenge30() {
+    let tests = [
+        ("",
+         "31d6cfe0d16ae931b73c59d7e0c089c0"),
+        ("a",
+         "bde52cb31de33e46245e05fbdbd6fb24"),
+        ("abc",
+         "a448017aaf21d8525fc10ae87aa6729d"),
+        ("message digest",
+         "d9130a8164549fe818874806e1c7014b"),
+        ("abcdefghijklmnopqrstuvwxyz",
+         "d79e1c308aa5bbcdeea8ed63df412da9"),
+        ("ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789",
+         "043f8582f241db351ce627e153e7f0e4"),
+        ("12345678901234567890123456789012345678901234567890123456789012345678901234567890",
+         "e33b4ddc9c38f2199c3e7b164fcc0536"),
+    ];
+
+    for (m, d) in tests {
+        assert_eq!(&md4_digest(m), d);
+    }
+
+    // test the base functionality
+    let key = random_bytes(16);
+    let msg = b"comment1=cooking%20MCs;userdata=foo;comment2=%20like%20a%20pound%20of%20bacon";
+    let mac = md4_mac(&key, msg);
+    assert!(md4_check(&key, msg, &mac));
+
+    // our final message will include the original message, the (previous) SHA-1 padding and the new payload
+    let pad = make_padding_md4(msg.len() + 16);
+    let extra = b";admin=true";
+    let mut fake_msg = msg.to_vec();
+    fake_msg.extend_from_slice(&pad);
+    fake_msg.extend_from_slice(extra);
+
+    // but the original mac already includes the (previous) padding, so we only feed the new payload
+    let mut md4 = Md4::new_from_digest(&mac, (msg.len() as u64 + 16 + pad.len() as u64) * 8);
+    md4.write(extra);
+    let fake_mac = md4.finish();
+
+    // check that our fake_msg and fake_mac validate as if computed by sha1_mac
+    assert!(md4_check(&key, &fake_msg, &fake_mac));
+}
