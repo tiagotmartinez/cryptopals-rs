@@ -1,3 +1,5 @@
+use std::convert::TryInto;
+
 /// A reference pure-Rust implementation of SHA-1, to be used as test bed.
 ///
 /// Not meant to be either fast or low-resource or whatever.  Just easy to hack.
@@ -23,11 +25,11 @@ impl Sha1 {
         assert!(digest.len() >= 20);
         Sha1 {
             h: [
-                ((digest[0] as u32) << 24) | ((digest[1] as u32) << 16) | ((digest[2] as u32) << 8) | (digest[3] as u32),
-                ((digest[4] as u32) << 24) | ((digest[5] as u32) << 16) | ((digest[6] as u32) << 8) | (digest[7] as u32),
-                ((digest[8] as u32) << 24) | ((digest[9] as u32) << 16) | ((digest[10] as u32) << 8) | (digest[11] as u32),
-                ((digest[12] as u32) << 24) | ((digest[13] as u32) << 16) | ((digest[14] as u32) << 8) | (digest[15] as u32),
-                ((digest[16] as u32) << 24) | ((digest[17] as u32) << 16) | ((digest[18] as u32) << 8) | (digest[19] as u32),
+                u32::from_be_bytes(digest[0..4].try_into().unwrap()),
+                u32::from_be_bytes(digest[4..8].try_into().unwrap()),
+                u32::from_be_bytes(digest[8..12].try_into().unwrap()),
+                u32::from_be_bytes(digest[12..16].try_into().unwrap()),
+                u32::from_be_bytes(digest[16..20].try_into().unwrap()),
             ],
             message_length,
             blk: vec![],
@@ -42,8 +44,7 @@ impl Sha1 {
 
         let mut w = [0u32; 80];
         for i in (0..64).step_by(4) {
-            let n = ((self.blk[i] as u32) << 24) | ((self.blk[i+1] as u32) << 16) | ((self.blk[i+2] as u32) << 8) | (self.blk[i+3] as u32);
-            w[i / 4] = n;
+            w[i / 4] = u32::from_be_bytes(self.blk[i..i+4].try_into().unwrap());
         }
 
         for i in 16..80 {
@@ -102,9 +103,7 @@ impl Sha1 {
         }
 
         // 64-bit length
-        for i in (0..8).rev() {
-            self.blk.push((message_length >> (8 * i)) as u8);
-        }
+        self.blk.extend_from_slice(&message_length.to_be_bytes());
 
         // process final block(s)
         assert!(self.blk.len() % 64 == 0);
@@ -112,14 +111,13 @@ impl Sha1 {
             self.process_block();
         }
 
-        // expand 5x4-byte into one 20-byte
-        let mut digest = vec![];
-        for i in 0..5 {
-            for j in (0..4).rev() {
-                digest.push((self.h[i] >> (j * 8)) as u8);
-            }
-        }
-
-        digest
+        // expand 5 x u32 into one 20-byte Vec<u8>
+        [
+            self.h[0].to_be_bytes(),
+            self.h[1].to_be_bytes(),
+            self.h[2].to_be_bytes(),
+            self.h[3].to_be_bytes(),
+            self.h[4].to_be_bytes(),
+        ].concat()
     }
 }
