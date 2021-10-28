@@ -383,12 +383,10 @@ pub fn challenge31() {
     let start = Instant::now();
     assert!(!verify_insecure(b"key", b"message", b"12345678901234567890"));
     let baseline = start.elapsed().as_millis() as u32;
-    println!("baseline = {}", baseline);
 
     let key = random_bytes(16);
     let message = random_bytes(32);
     let secret_mac = hmac_sha1(&key, &message);
-    println!("{}", hex::encode(&secret_mac));
 
     let mut last_digits = 0;
     let mut guess_mac = vec![0u8; secret_mac.len()];
@@ -404,10 +402,99 @@ pub fn challenge31() {
         // take the shortcut in this test
         let n_digits = elapsed_ms / 50;
         if n_digits != last_digits {
-            println!("n_digits = {} {}", n_digits, hex::encode(&guess_mac[..n_digits as usize]));
             last_digits = n_digits;
         }
         guess_mac[n_digits as usize] += 1;
+    }
+
+    assert_eq!(guess_mac, secret_mac);
+}
+
+//=============================================================================
+// CHALLENGE 32
+//=============================================================================
+const CHALLENGE_32_DELAY: u64 = 1;
+
+// Return `true` if `left` and `right` have same length and contents, but take
+// a while to compare each byte, making timing attacks easier.
+fn insecure_compare_32(left: &[u8], right: &[u8]) -> bool {
+    if left.len() != right.len() {
+        return false;
+    }
+
+    for i in 0..left.len() {
+        if left[i] != right[i] {
+            return false;
+        }
+        std::thread::sleep(Duration::from_millis(CHALLENGE_32_DELAY));
+    }
+
+    true
+}
+
+// Verify if HMAC-SHA-1 of `message` under `key` matches `mac` using `insecure_compare`
+fn verify_insecure_32(key: &[u8], message: &[u8], mac: &[u8]) -> bool {
+    insecure_compare_32(&hmac_sha1(key, message), mac)
+}
+
+// Break HMAC-SHA1 with a slightly less artificial timing leak
+pub fn challenge32() {
+    assert_eq!(hex::encode(hmac_sha1(b"key", b"The quick brown fox jumps over the lazy dog")), "de7c9b85b8b78aa6bc8a7a36f70a90701c9db4d9");
+    assert!(verify_insecure_32(b"key", b"The quick brown fox jumps over the lazy dog", &hex::decode("de7c9b85b8b78aa6bc8a7a36f70a90701c9db4d9").unwrap()));
+
+    //let sample_size = 20;
+
+    let key = random_bytes(16);
+    let message = random_bytes(32);
+    let secret_mac = hmac_sha1(&key, &message);
+    println!("{}", hex::encode(&secret_mac));
+
+    let mut guess_mac = vec![0u8; secret_mac.len()];
+
+    // for each digit, test all possible bytes, multiple samples
+    // per byte value, and select the one with the larger minimum among samples
+    // this is meant to remove influence from jitter
+
+    // for each digit
+    'outer: for digit in 0..secret_mac.len() {
+        // could be dynamic?
+        let sample_size = 20;
+        let mut longest_time = 0;
+        let mut longest_byte = 0;
+
+        // `times` is for debugging purposes...
+        let mut times = vec![];
+
+        // for each byte
+        for byte in 0..=255 {
+            // new guess
+            guess_mac[digit] = byte;
+
+            // test to find
+            let mut elapsed = u128::MAX;
+            for _ in 0..sample_size {
+                let start = Instant::now();
+                if verify_insecure_32(&key, &message, &guess_mac) {
+                    break 'outer
+                }
+                let this_sample = start.elapsed().as_millis();
+                if this_sample < elapsed {
+                    elapsed = this_sample;
+                }
+            }
+
+            if elapsed > longest_time {
+                longest_time = elapsed;
+                longest_byte = byte;
+            }
+
+            times.push((byte, elapsed));
+        }
+        guess_mac[digit] = longest_byte;
+        println!("{} [{}]", hex::encode(&guess_mac), longest_time);
+        times.sort_by_key(|(_, t)| u128::MAX - t);
+        println!("{:?}", &times[..10]);
+        assert_eq!(&secret_mac[..digit+1], &guess_mac[..digit+1]);
     }
 
     println!("guess_mac = {}", hex::encode(&guess_mac));
