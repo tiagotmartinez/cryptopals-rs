@@ -124,6 +124,13 @@ impl Sha1 {
     }
 }
 
+// One-shot SHA1 of a message
+pub fn sha1(message: &[u8]) -> Vec<u8> {
+    let mut sha = Sha1::new();
+    sha.write(message);
+    sha.finish()
+}
+
 // Compute HMAC-SHA1 of a message
 pub fn hmac_sha1(key: &[u8], message: &[u8]) -> Vec<u8> {
     let key = {
