@@ -11,6 +11,7 @@ mod set3;
 mod set4;
 mod set5;
 mod dh;
+mod srp;
 
 fn main() {
     // println!("Running set 1...");
@@ -56,5 +57,6 @@ fn main() {
     // println!("Running set 5...");
     // set5::challenge33();
     // set5::challenge34();
-    set5::challenge35();
+    // set5::challenge35();
+    set5::challenge36();
 }

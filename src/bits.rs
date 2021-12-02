@@ -52,6 +52,17 @@ pub fn random_bytes(n: usize) -> Vec<u8> {
     bytes
 }
 
+/// Return a random ASCII string (for passwords).
+pub fn random_ascii_string(n: usize) -> String {
+    let mut s = String::new();
+    let mut rng = thread_rng();
+    let ascii = rand::distributions::Uniform::<u8>::new(32, 128);
+    for _ in 0..n {
+        s.push(ascii.sample(&mut rng) as char);
+    }
+    s
+}
+
 /// Return `true` if breaking `data` in blocks of exactly `block_size` bytes
 /// at least one block repeats.
 pub fn repeats_block(data: &[u8], block_size: usize) -> bool {
