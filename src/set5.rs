@@ -17,6 +17,8 @@ use crate::srp::*;
 // use crate::mt::*;
 
 use num::{Num, BigUint, One, Zero};
+use sha2::{Sha256, Digest};
+use hmac::{Hmac, Mac, NewMac};
 
 //=============================================================================
 // CHALLENGE 33
@@ -142,6 +144,56 @@ pub fn challenge36() {
 
     let client_mac = client.second(&password, salt, &bb);
     let server_mac = server.second(&user, &aa);
+
+    assert_eq!(client_mac, server_mac);
+}
+
+//=============================================================================
+// CHALLENGE 37
+//=============================================================================
+
+// Break SRP with a zero key
+pub fn challenge37() {
+    // we are the evil client, but use the standard (working) SRPServer from challenge 36
+    let p = BigUint::from_str_radix("ffffffffffffffffc90fdaa22168c234c4c6628b80dc1cd129024e088a67cc74020bbea63b139b22514a08798e3404ddef9519b3cd3a431b302b0a6df25f14374fe1356d6d51c245e485b576625e7ec6f44c42e9a637ed6b0bff5cb6f406b7edee386bfb5a899fa5ae9f24117c4b1fe649286651ece45b3dc2007cb8a163bf0598da48361c55d39a69163fa8fd24cf5f83655d23dca3ad961c62f356208552bb9ed529077096966d670c354e4abc9804f1746c08ca237327ffffffffffffffff", 16).unwrap();
+    let user = "user@example.com";
+    let password = random_ascii_string(16);
+
+    // the actual enroll on the server
+    let mut server = SRPServer::new(p.clone(), BigUint::from(2u32), BigUint::from(3u32));
+    server.enroll(user, &password);
+
+    // evil client!
+    let (salt, _bb) = server.first();
+    let aa = BigUint::zero();
+    let server_mac = server.second(&user, &aa);
+
+    // if aa == 0 then s == 0 inside SRPServer::server()
+    let s = BigUint::zero();
+
+    let mut hasher = Sha256::new();
+    hasher.update(&s.to_bytes_be());
+    let key = hasher.finalize().to_vec();
+
+    let mut mac = Hmac::<Sha256>::new_from_slice(&key).unwrap();
+    mac.update(salt.to_string().as_bytes());
+    let client_mac = mac.finalize().into_bytes().to_vec();
+
+    assert_eq!(client_mac, server_mac);
+
+    // test with aa == k*N. as N is the zero element mod N, then s == 0 as well
+
+    // use k == 3, but can be anything really
+    let aa = &p * BigUint::from(3u32);
+    let mut server = SRPServer::new(p.clone(), BigUint::from(2u32), BigUint::from(3u32));
+    server.enroll(user, &password);
+    let (salt, _bb) = server.first();
+    let server_mac = server.second(&user, &aa);
+
+    // recompute Hmac because of different salt
+    let mut mac = Hmac::<Sha256>::new_from_slice(&key).unwrap();
+    mac.update(salt.to_string().as_bytes());
+    let client_mac = mac.finalize().into_bytes().to_vec();
 
     assert_eq!(client_mac, server_mac);
 }
