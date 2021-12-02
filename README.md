@@ -9,6 +9,10 @@ This repository is incomplete, but I plan to keep adding stuff as I have time to
 The current status is:
 * Set 1 is **complete**
 * Set 2 is **complete**
-* Set 3 is **halfway**
-* Sets 4 to 7 I have not started (I did set 4 in the past, in C++, but lost the solutions... You will have to take my word for it!)
+* Set 3 is **complete**
+* Set 4 is **complete**
+* Set 5 is **halfway**
+* Sets 6 to 7 I have not started
+
+
 
