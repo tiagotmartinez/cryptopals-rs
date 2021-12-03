@@ -16,6 +16,7 @@ use crate::srp::*;
 // use crate::md4::*;
 // use crate::mt::*;
 
+use rand::{thread_rng, seq::SliceRandom};
 use num::{Num, BigUint, One, Zero};
 use sha2::{Sha256, Digest};
 use hmac::{Hmac, Mac, NewMac};
@@ -196,4 +197,77 @@ pub fn challenge37() {
     let client_mac = mac.finalize().into_bytes().to_vec();
 
     assert_eq!(client_mac, server_mac);
+}
+
+//=============================================================================
+// CHALLENGE 38
+//=============================================================================
+
+// Offline dictionary attack on simplified SRP
+pub fn challenge38() {
+    let p = BigUint::from_str_radix("ffffffffffffffffc90fdaa22168c234c4c6628b80dc1cd129024e088a67cc74020bbea63b139b22514a08798e3404ddef9519b3cd3a431b302b0a6df25f14374fe1356d6d51c245e485b576625e7ec6f44c42e9a637ed6b0bff5cb6f406b7edee386bfb5a899fa5ae9f24117c4b1fe649286651ece45b3dc2007cb8a163bf0598da48361c55d39a69163fa8fd24cf5f83655d23dca3ad961c62f356208552bb9ed529077096966d670c354e4abc9804f1746c08ca237327ffffffffffffffff", 16).unwrap();
+    let g = BigUint::from(2u32);
+    let k = BigUint::from(3u32);
+    let user = "user@example.com";
+    let password = random_ascii_string(16);
+
+    // part I -- test that simplified SRP is working
+    let mut server = SRPServer::new(p.clone(), g.clone(), k.clone());
+    server.enroll(user, &password);
+
+    let mut client = SRPClient::new(p.clone(), g.clone(), k.clone(), user);
+    let (user, aa) = client.first();
+
+    let (salt, bb, u) = server.first_simplified();
+
+    let client_mac = client.second_simplified(&password, salt, &bb, u);
+    let server_mac = server.second_simplified(&user, &aa);
+
+    assert_eq!(client_mac, server_mac);
+
+    // part II -- evil server does the dictionary attack
+
+    // lets make a realer version using a list of words
+    // (a very small one, I wanted this code to run fast even in debug mode)
+    let words : Vec<_> = include_str!("5-38.txt").lines().collect();
+    let mut client = SRPClient::new(p.clone(), g.clone(), k.clone(), &user);
+
+    // password is randomly choosen from the list of words above
+    let mut rng = thread_rng();
+    let password = *words.choose(&mut rng).unwrap();
+
+    let b = BigUint::from_bytes_be(&random_bytes(128));
+    let bb = g.modpow(&b, &p);
+    let u = 1u128;
+    let salt = 0u128;
+
+    let (_, aa) = client.first();
+    let aab = aa.modpow(&b, &p);
+    let client_mac = client.second_simplified(&password, salt, &bb, u);
+    let ub = BigUint::from(u);
+
+    let mut hasher = Sha256::new();
+    let mut found = None;
+    for guess in words {
+        hasher.update(salt.to_string().as_bytes());
+        hasher.update(guess.as_bytes());
+        let x = BigUint::from_bytes_be(&hasher.finalize_reset());
+
+        // S == B**(a + ux) == (B**a) * (B**ux) == (A**b) * (B**ux)
+        let s = (&aab * bb.modpow(&(&ub * &x), &p)) % &p;
+        hasher.update(&s.to_bytes_be());
+        let key = hasher.finalize_reset();
+
+        let mut mac = Hmac::<Sha256>::new_from_slice(&key).unwrap();
+        mac.update(salt.to_string().as_bytes());
+        let server_mac = mac.finalize().into_bytes().to_vec();
+
+        if server_mac == client_mac {
+            found = Some(guess.to_string());
+            break;
+        }
+    }
+
+    assert!(found.is_some());
+    assert_eq!(found.unwrap(), password);
 }
