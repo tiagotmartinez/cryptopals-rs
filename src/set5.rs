@@ -2,24 +2,27 @@
 
 #![allow(dead_code)]
 
-// use std::time::{Instant, Duration};
-// use rand::RngCore;
-// use rand::distributions::{Distribution, Uniform};
-
-// use crate::english::*;
-// use crate::pkcs7::*;
-// use crate::aes::*;
 use crate::bits::*;
 use crate::sha1::*;
 use crate::dh::*;
 use crate::srp::*;
-// use crate::md4::*;
-// use crate::mt::*;
+
+use num::{
+    bigint::ToBigInt,
+    Integer,
+    Signed,
+    Num,
+    BigUint,
+    BigInt,
+    One,
+    Zero,
+};
 
 use rand::{thread_rng, seq::SliceRandom};
-use num::{Num, BigUint, One, Zero};
 use sha2::{Sha256, Digest};
 use hmac::{Hmac, Mac, NewMac};
+
+use glass_pumpkin::prime;
 
 //=============================================================================
 // CHALLENGE 33
@@ -270,4 +273,111 @@ pub fn challenge38() {
 
     assert!(found.is_some());
     assert_eq!(found.unwrap(), password);
+}
+
+//=============================================================================
+// CHALLENGE 39
+//=============================================================================
+
+
+/// Return (gcd(a, b), s, t) where gcd(a, b) = a*s + b*t
+fn egcd(a: &BigInt, b: &BigInt) -> (BigInt, BigInt, BigInt) {
+    let (mut r0, mut r1) = (a.clone(), b.clone());
+    let (mut s0, mut s1) = (BigInt::one(), BigInt::zero());
+    let (mut t0, mut t1) = (BigInt::zero(), BigInt::one());
+
+    while !r1.is_zero() {
+        let (q1, r2) = r0.div_mod_floor(&r1);
+        r0 = r1;
+        r1 = r2;
+
+        let s2 = &s0 - &q1 * &s1;
+        s0 = s1;
+        s1 = s2;
+
+        let t2 = &t0 - &q1 * &t1;
+        t0 = t1;
+        t1 = t2;
+    }
+
+    if t0.is_negative() {
+        t0 += b;
+    }
+
+    (r0, s0, t0)
+}
+
+/// Return the modular multiplicative inverse of (a mod m) or None if not invertible
+fn invmod(a: &BigUint, m: &BigUint) -> Option<BigUint> {
+    let a = a.to_bigint().unwrap();
+    let m = m.to_bigint().unwrap();
+    let (r, mut s, _) = egcd(&a, &m);
+
+    if r.is_one() {
+        // gcd == 1, `a` and `m` are relatively prime
+        if s.is_negative() {
+            s += &m;
+        }
+        Some((s % m).to_biguint().unwrap())
+    } else {
+        None
+    }
+}
+
+#[derive(Debug)]
+struct PublicKey(BigUint, BigUint);
+
+#[derive(Debug)]
+struct PrivateKey(BigUint, BigUint);
+
+fn random_keypair(bits: usize) -> (PublicKey, PrivateKey) {
+    loop {
+        let p = prime::new(bits).unwrap();
+        let q = prime::new(bits).unwrap();
+        let n = &p * &q;
+        let et = (&p - BigUint::one()) * (&q - BigUint::one());
+        let e = BigUint::from(3u32);
+        if let Some(d) = invmod(&e, &et) {
+            // got keys
+            let pk = PublicKey(e, n.clone());
+            let sk = PrivateKey(d, n);
+            return (pk, sk);
+        } else {
+            // try again
+        }
+    }
+}
+
+fn message_to_biguint(m: &[u8]) -> BigUint {
+    BigUint::from_bytes_be(m)
+}
+
+fn biguint_to_message(m: &BigUint) -> Vec<u8> {
+    m.to_bytes_be()
+}
+
+fn encrypt_pk(m: &BigUint, pk: &PublicKey) -> BigUint {
+    m.modpow(&pk.0, &pk.1)
+}
+
+fn decrypt_sk(c: &BigUint, sk: &PrivateKey) -> BigUint {
+    c.modpow(&sk.0, &sk.1)
+}
+
+// Implement RSA
+pub fn challenge39() {
+    // quick'n'dirty check
+    assert_eq!(invmod(&BigUint::from(17u32), &BigUint::from(3120u32)).unwrap(), BigUint::from(2753u32));
+
+    // using 256-bit keys for speed
+    // validate the math anyway
+    for _ in 0..10 {
+        let (pk, sk) = random_keypair(256);
+        let msg = random_bytes(31);
+        let m = message_to_biguint(&msg);
+        let c = encrypt_pk(&m, &pk);
+        let d = decrypt_sk(&c, &sk);
+        let opn = biguint_to_message(&d);
+        assert_eq!(msg, opn);
+    }
 }
