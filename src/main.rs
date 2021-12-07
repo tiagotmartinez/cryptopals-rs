@@ -61,5 +61,6 @@ fn main() {
     // set5::challenge36();
     // set5::challenge37();
     // set5::challenge38();
-    set5::challenge39();
+    // set5::challenge39();
+    set5::challenge40();
 }

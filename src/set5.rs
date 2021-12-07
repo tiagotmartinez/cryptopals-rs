@@ -279,7 +279,6 @@ pub fn challenge38() {
 // CHALLENGE 39
 //=============================================================================
 
-
 /// Return (gcd(a, b), s, t) where gcd(a, b) = a*s + b*t
 fn egcd(a: &BigInt, b: &BigInt) -> (BigInt, BigInt, BigInt) {
     let (mut r0, mut r1) = (a.clone(), b.clone());
@@ -381,3 +380,39 @@ pub fn challenge39() {
         assert_eq!(msg, opn);
     }
 }
+
+//=============================================================================
+// CHALLENGE 40
+//=============================================================================
+
+// Implement an E=3 RSA Broadcast attack
+pub fn challenge40() {
+
+    let msg = random_bytes(31);
+    let m = BigUint::from_bytes_be(&msg);
+
+    let (pk1, _sk1) = random_keypair(512);
+    let c1 = encrypt_pk(&m, &pk1);
+
+    let (pk2, _sk2) = random_keypair(512);
+    let c2 = encrypt_pk(&m, &pk2);
+
+    let (pk3, _sk3) = random_keypair(512);
+    let c3 = encrypt_pk(&m, &pk3);
+
+    let ms0 = &pk2.1 * &pk3.1;
+    let ms1 = &pk1.1 * &pk3.1;
+    let ms2 = &pk1.1 * &pk2.1;
+    let n012 = &pk1.1 * &pk2.1 * &pk3.1;
+
+    let result =
+        ((&c1 * &ms0 * &invmod(&ms0, &pk1.1).expect("invmod(ms0, pk1)")) +
+         (&c2 * &ms1 * &invmod(&ms1, &pk2.1).expect("invmod(ms1, pk2)")) +
+         (&c3 * &ms2 * &invmod(&ms2, &pk3.1).expect("invmod(ms2, pk3)"))) % &n012;
+
+    assert_eq!(&m * &m * &m, result);
+
+    let m2 = result.nth_root(3);
+    assert_eq!(&m, &m2);
+}
+
