@@ -11,7 +11,7 @@ The current status is:
 * Set 2 is **complete**
 * Set 3 is **complete**
 * Set 4 is **complete**
-* Set 5 is **halfway**
+* Set 5 is **complete**
 * Sets 6 to 7 I have not started
 
 
