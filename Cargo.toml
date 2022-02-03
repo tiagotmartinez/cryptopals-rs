@@ -2,7 +2,7 @@
 name = "cryptopals"
 version = "0.1.0"
 authors = ["Tiago MARTINEZ <tiago.martinez@ingenico.com>"]
-edition = "2018"
+edition = "2021"
 
 [dependencies]
 hex = "0.4"
