@@ -65,4 +65,7 @@ fn main() {
     // set5::challenge38();
     // set5::challenge39();
     // set5::challenge40();
+
+    // println!("Running set 6...");
+    set6::challenge41();
 }

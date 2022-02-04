@@ -56,12 +56,15 @@ pub fn invmod(a: &BigUint, m: &BigUint) -> Option<BigUint> {
     }
 }
 
+/// A RSA Public-Key, composed of modulus and public exponent
 #[derive(Debug)]
 pub struct PublicKey(pub BigUint, pub BigUint);
 
+/// A (shortened) RSA Private-Key, composed of modulus and private exponent
 #[derive(Debug)]
 pub struct PrivateKey(pub BigUint, pub BigUint);
 
+/// Return a random new (public, private) key pair.
 pub fn random_keypair(bits: usize) -> (PublicKey, PrivateKey) {
     loop {
         let p = prime::new(bits).unwrap();
@@ -80,18 +83,22 @@ pub fn random_keypair(bits: usize) -> (PublicKey, PrivateKey) {
     }
 }
 
+/// Convert a sequence of bytes to a `BigUint`.
 pub fn message_to_biguint(m: &[u8]) -> BigUint {
     BigUint::from_bytes_be(m)
 }
 
+/// Convert a `BigUint` back to a sequence of bytes.
 pub fn biguint_to_message(m: &BigUint) -> Vec<u8> {
     m.to_bytes_be()
 }
 
+/// Encrypt a message using a public key.
 pub fn encrypt_pk(m: &BigUint, pk: &PublicKey) -> BigUint {
     m.modpow(&pk.0, &pk.1)
 }
 
+/// Decrypt a message using a private key.
 pub fn decrypt_sk(c: &BigUint, sk: &PrivateKey) -> BigUint {
     c.modpow(&sk.0, &sk.1)
 }
